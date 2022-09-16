@@ -11,6 +11,16 @@ def linear(x):
     return x
 
 
+# ReLU activation function
+ReLU = np.vectorize(lambda x : max(x, 0))
+
+
+def softmax(z):
+    '''Softmax activation function.'''
+    ez = np.exp(z)
+    return ez/np.sum(ez)
+
+
 def mse(ypred, y):
     '''Calculate mean squared error for a given set of predictions and labels.'''
     deltas = ypred - y
@@ -24,6 +34,13 @@ def log_loss(ypred, y):
     m = ypred.shape[0]
     return (np.dot(y.T, -np.log(ypred)) + np.dot((1-y).T, -np.log(1-ypred)))/m
 
+
+def softmax_loss(ypred, y):
+    '''Calculate the softmax (sparse categorical cross entropy) of
+    the given predictions and labels (with integer values).'''
+    ypred = np.array([ypr[i] for ypr, i in zip(ypred, y)])
+    return np.sum(-log(ypred))
+        
 
 class Layer(object):
     '''A simple neural network layer.'''
@@ -118,15 +135,23 @@ class Model(object):
                         weight[i][j] -= self.lr * grads[ig]
                         ig += 1
 
+    def fit(self, x, y, epochs):
+        '''Fit to labelled data.'''
+        costs = []
+        for i in range(epochs):
+            self.step(x, y)
+            cost = self.cost(x, y)
+            costs.append(cost)
+            print('Epoch', i, f'cost = {cost:.3f}')
+        return costs
 
+    
 def fit(model, x, y, epochs):
     '''Fit a simple model to labelled data using the given number of epochs.'''
     print(f'w = {model.network.layers[0].weights[0][0]:.2f}, b = {model.network.layers[0].biases[0][0]:.2f}')
     print(f'predictions: {model(x)}')
     print('Cost:', model.cost(x, y))
-    for i in range(epochs):
-        model.step(x, y)
-        print('Epoch', i, 'cost:', model.cost(x, y))
+    costs = model.fit(x, y)
     print(f'w = {model.network.layers[0].weights[0][0]:.2f}, b = {model.network.layers[0].biases[0][0]:.2f}')
     print(f'predictions: {model(x)}')
     
@@ -139,9 +164,10 @@ def test_linear():
     # Expect w = 1, b = 0
     x = np.array(range(m)).reshape((m, 1))
     y = np.array(range(m)).reshape((m, 1))
-
+    
     epochs = 100
     fit(model, x, y, epochs)
+    return model, x, y
 
 
 def test_classification():
@@ -159,6 +185,34 @@ def test_classification():
     return model, x, y
 
 
+def test_classification_2D():
+    nn = Network([2, 3, 1], [ReLU, sigmoid])
+    model = Model(nn, loss=log_loss, learning_rate=1)
+
+    m = 100
+    x = np.random.random((m, 2))
+
+    def test(example):
+        a1, a2 = example
+        return a1 < 0.1 or a2 < 0.1 or a1 + a2 > 1.
+
+    y = np.array([int(test(ex)) for ex in x]).reshape((m, 1))
+
+    epochs = 600
+    model.fit(x, y, epochs)
+    ypred = model(x)
+    print('Label, prediction:')
+    for _y, _ypred in zip(y, ypred):
+        print(_y[0], _ypred[0])
+
+    layer = model.network.layers[0]
+    weights = layer.weights.T
+    for i in range(weights.shape[0]):
+        print('neuron', i, 'weights', weights[i], 'bias', layer.biases[0][i])
+        
+    return model, x, y
+
+
 if __name__ == '__main__':
     # nn = Network([3,8,4,1], sigmoid)
     # model = Model(nn, log_loss)
@@ -170,4 +224,6 @@ if __name__ == '__main__':
 
     # test_linear()
 
-    model, x, y = test_classification()
+    # model, x, y = test_classification()
+
+    model, x, y = test_classification_2D()
