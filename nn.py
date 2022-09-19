@@ -186,7 +186,10 @@ def test_classification():
 
 
 def test_classification_2D():
-    nn = Network([2, 3, 1], [ReLU, sigmoid])
+    nn = Network([2, 3, 1],
+                 [ReLU, sigmoid]
+                 # sigmoid
+                 )
     model = Model(nn, loss=log_loss, learning_rate=1)
 
     m = 100
@@ -201,14 +204,32 @@ def test_classification_2D():
     epochs = 600
     model.fit(x, y, epochs)
     ypred = model(x)
+    print()
     print('Label, prediction:')
     for _y, _ypred in zip(y, ypred):
         print(_y[0], _ypred[0])
-
+    print()
+        
     layer = model.network.layers[0]
     weights = layer.weights.T
     for i in range(weights.shape[0]):
         print('neuron', i, 'weights', weights[i], 'bias', layer.biases[0][i])
+    print()
+
+    print('Prediction map:')
+    xvals = [0.1*i for i in range(11)]
+    yvals = xvals[::-1]
+    for yval in yvals:
+        print(f'{yval:3.1f} |', end=' ')
+        for xval in xvals:
+            p = model(np.array([xval, yval]).reshape(1, 2))[0][0]
+            print(f'{p:4.2f}', end=' ')
+        print()
+    print('-'*(6 + 5*11))
+    print('y/x |', end=' ')
+    for xval in xvals:
+        print(f'{xval:4.1f}', end=' ')
+    print()
         
     return model, x, y
 
