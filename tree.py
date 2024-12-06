@@ -2,10 +2,13 @@ from __future__ import annotations
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Generator, Callable
+from sklearn.metrics import mean_squared_error
+from copy import deepcopy
 
 
 SplitFunction = Callable[[np.ndarray], np.ndarray]
 SplitGenerator = Generator[SplitFunction, None, None]
+SplitCosts = list[tuple[SplitFunction, float]]
 
 
 class Node:
@@ -15,10 +18,21 @@ class Node:
         self.split_left = None
         self.split_right = None
         self.split_function = None
+        self.allowed_columns = None
 
     @property
-    def n(self):
+    def n(self) -> int:
         return len(self.X)
+
+    @property
+    def is_split(self) -> bool:
+        return bool(self.split_left)
+
+    @property
+    def max_depth(self) -> int:
+        if not self.is_split:
+            return 1
+        return 1 + max(self.split_left.max_depth, self.split_right.max_depth)
 
     def get_split(self, split_func: SplitFunction) -> tuple[Node, Node]:
         split_index = split_func(self.X)
@@ -34,7 +48,7 @@ class Node:
         return left, right
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        if not self.split_left:
+        if not self.is_split:
             return np.array([self.y.mean()] * len(X))
 
         split_index = self.split_function(X)
@@ -55,21 +69,27 @@ class Node:
 
 class SplitCriterion(ABC):
     def cost(self, node: Node) -> float:
-        return self._cost(node.X, node.y)
+        return self._cost(node.y)
 
     @abstractmethod
-    def _cost(self, X: np.ndarray, y: np.ndarray) -> float:
+    def _cost(self, y: np.ndarray) -> float:
         # Do we need X?
         pass
 
 
 class Gini(SplitCriterion):
-    def _cost(self, X: np.ndarray, y: np.ndarray) -> float:
+    def _cost(self, y: np.ndarray) -> float:
         n = len(y)
         gini = 1.0
         for c in np.unique(y):
             gini -= ((y == c).sum() / n) ** 2
         return gini
+
+
+class MSE(SplitCriterion):
+    def _cost(self, y: np.array) -> float:
+        pred = y.mean()
+        return mean_squared_error([pred] * len(y), y)
 
 
 class Splitter(ABC):
@@ -84,10 +104,13 @@ class Splitter(ABC):
 
     def split_cost(self, node: Node, split_func: SplitFunction) -> float:
         left, right = node.get_split(split_func)
+        if left.n == 0 or right.n == 0:
+            # Not actually split, just return the cost of the parent node
+            return self.criterion.cost(node)
         # Weighted average of costs
         return (self.criterion.cost(left) * left.n + self.criterion.cost(right) * right.n) / node.n
 
-    def split_costs(self, node: Node) -> list[tuple[SplitFunction, float]]:
+    def split_costs(self, node: Node) -> SplitCosts:
         return [(split, self.split_cost(node, split)) for split in self.generate_splits(node.X)]
 
     def best_split(self, node: Node) -> np.ndarray | None:
@@ -103,6 +126,30 @@ class Splitter(ABC):
     @abstractmethod
     def generate_splits(self, X: np.ndarray) -> SplitGenerator:
         pass
+
+
+class ConditionalSplitter(Splitter):
+    def __init__(self, criterion: SplitCriterion, conditions: dict[int, list[int]]):
+        super().__init__(criterion)
+        self.conditions = deepcopy(conditions)
+
+    def split_costs(self, node: Node) -> SplitCosts:
+        costs = super().split_costs(node)
+        return [(split, cost) for split, cost in costs if split.i in node.allowed_columns]
+
+    def split(self, node: Node) -> tuple[Node, Node] | None:
+        if node.allowed_columns is None:
+            node.allowed_columns = set(self.conditions)
+        split_nodes = super().split(node)
+        if not split_nodes:
+            return None
+        left, right = split_nodes
+        left.allowed_columns = node.allowed_columns.copy()
+        right.allowed_columns = node.allowed_columns.copy()
+        i = node.split_function.i
+        if i in self.conditions:
+            right.allowed_columns.update(self.conditions[i])
+        return left, right
 
 
 class SplitFunction(ABC):
@@ -132,6 +179,10 @@ class QuantileSplitter(Splitter):
             col = X[:, i]
             for qtile in np.percentile(col, np.linspace(10, 90, 9)):
                 yield FloatSplit(i, qtile)
+
+
+class ConditionalQuantileSplitter(QuantileSplitter, ConditionalSplitter):
+    pass
 
 
 class TreeBuilder:
