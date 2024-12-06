@@ -1,0 +1,5 @@
+*~
+*.png
+env
+__pycache__
+catboost_info
