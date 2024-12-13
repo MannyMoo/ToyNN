@@ -4,6 +4,7 @@ from sklearn.metrics import accuracy_score, r2_score
 from catboost import CatBoostRegressor
 import shap
 import matplotlib.pyplot as plt
+import subprocess
 
 rng = np.random.default_rng(seed=125)
 
@@ -37,20 +38,24 @@ criterion = MSE()
 splitter = QuantileSplitter(criterion)
 # splitter = ConditionalQuantileSplitter(criterion, conditions = {0: [1, 2]})
 
-builder = TreeBuilder(splitter, min_samples=10)
+builder = TreeBuilder(splitter, min_samples=10, max_depth=4)
 
 X, y = gen_presence()
 
 tree = Tree(builder)
 tree.fit(X, y)
+feature_names = ["Present", "Area", "Attention"]
+tree.export_graphviz(name + ".dot", feature_names=feature_names)
+subprocess.call(["dot", "-Tpng", "-Gdpi=300", name + ".dot", "-o", name + ".png"])
 
 # score = accuracy_score(np.round(tree.predict(X)), y)
 score = r2_score(tree.predict(X), y)
+print(f"{score=:.3f}")
 
 X_test = np.array([[0] * 101, np.linspace(0, 1, 101), [0] * 101]).T
 preds = tree.predict(X_test)
 
-exp = shap.Explainer(tree.predict, X, feature_names=["Present", "Area", "Attention"])
+exp = shap.Explainer(tree.predict, X, feature_names=feature_names)
 explanations = exp(X[:100])
 plot = shap.plots.beeswarm(explanations, show=False)
 plt.gcf().tight_layout()
