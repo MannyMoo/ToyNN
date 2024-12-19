@@ -236,7 +236,7 @@ class TreeBuilder:
         self.min_samples = min_samples
         self.max_depth = max_depth
 
-    def build(self, root_node: Node, depth: int = 1) -> bool:
+    def build(self, root_node: Node, depth: int = 0) -> bool:
         if root_node.n < self.min_samples or (self.max_depth > 0 and depth >= self.max_depth):
             return False
         splits = self.splitter.split(root_node)
